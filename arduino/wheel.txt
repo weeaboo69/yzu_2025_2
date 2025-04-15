@@ -1,0 +1,128 @@
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+
+#define SERVICE_UUID        "180F" // 使用標準的電池服務 UUID
+#define CHARACTERISTIC_UUID "2A19" // 使用標準的電池等級特性 UUID
+
+BLEServer* pServer = NULL;
+BLECharacteristic* pCharacteristic = NULL;
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+
+// 連接狀態回調
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) {
+      deviceConnected = true;
+      Serial.println("裝置已連接");
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+      deviceConnected = false;
+      Serial.println("裝置已斷開連接");
+    }
+};
+
+#define SENSOR_A 15
+#define SENSOR_B 19
+#define SENSOR_C 22
+#define SENSOR_D 5
+
+volatile int lastTriggered = -1;
+volatile int secondLastTriggered = -1;
+
+void IRAM_ATTR sensorTriggered(int sensorID) {
+    secondLastTriggered = lastTriggered;
+    lastTriggered = sensorID;
+
+    
+
+    if (secondLastTriggered != -1) {
+        if ((secondLastTriggered == SENSOR_A && lastTriggered == SENSOR_B) ||
+            (secondLastTriggered == SENSOR_B && lastTriggered == SENSOR_C) ||
+            (secondLastTriggered == SENSOR_C && lastTriggered == SENSOR_D) ||
+            (secondLastTriggered == SENSOR_D && lastTriggered == SENSOR_A)) {
+            Serial.println("順時針旋轉");
+            if (deviceConnected) {
+              pCharacteristic->setValue("gjp4");
+              pCharacteristic->notify();
+              Serial.println("發送順時針");
+            }
+
+        } else if ((secondLastTriggered == SENSOR_A && lastTriggered == SENSOR_D) ||
+                   (secondLastTriggered == SENSOR_D && lastTriggered == SENSOR_C) ||
+                   (secondLastTriggered == SENSOR_C && lastTriggered == SENSOR_B) ||
+                   (secondLastTriggered == SENSOR_B && lastTriggered == SENSOR_A)) {
+            Serial.println("逆時針旋轉");
+            if (deviceConnected) {
+              pCharacteristic->setValue("su4");
+              pCharacteristic->notify();
+              Serial.println("發送逆時針");
+            }
+        }
+    }
+}
+
+void setup() {
+    Serial.begin(9600);
+    
+    pinMode(SENSOR_A, INPUT_PULLUP);
+    pinMode(SENSOR_B, INPUT_PULLUP);
+    pinMode(SENSOR_C, INPUT_PULLUP);
+    pinMode(SENSOR_D, INPUT_PULLUP);
+    Serial.println("輪子控制器已啟動 (BLE 模式)");
+
+    attachInterrupt(digitalPinToInterrupt(SENSOR_A), [](){ sensorTriggered(SENSOR_A); }, FALLING);
+    attachInterrupt(digitalPinToInterrupt(SENSOR_B), [](){ sensorTriggered(SENSOR_B); }, FALLING);
+    attachInterrupt(digitalPinToInterrupt(SENSOR_C), [](){ sensorTriggered(SENSOR_C); }, FALLING);
+    attachInterrupt(digitalPinToInterrupt(SENSOR_D), [](){ sensorTriggered(SENSOR_D); }, FALLING);
+
+    BLEDevice::init("ESP32_Wheelspeed2_BLE");
+  
+    // 建立 BLE 服務器
+    pServer = BLEDevice::createServer();
+    pServer->setCallbacks(new MyServerCallbacks());
+  
+    // 建立 BLE 服務
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+  
+  // 建立 BLE 特性
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ   |
+                      BLECharacteristic::PROPERTY_WRITE  |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  
+  // 添加描述符
+  pCharacteristic->addDescriptor(new BLE2902());
+  
+  // 啟動服務
+  pService->start();
+  
+  // 啟動廣播
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // iPhone 連接參數
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  
+  Serial.println("BLE 已啟動，等待連接...");
+}
+
+void loop() {
+  if (!deviceConnected && oldDeviceConnected) {
+    delay(500); // 等待 BLE 堆疊準備好
+    pServer->startAdvertising(); // 重新開始廣播
+    Serial.println("開始重新廣播");
+    oldDeviceConnected = deviceConnected;
+  }
+  
+  // 處理新連接
+  if (deviceConnected && !oldDeviceConnected) {
+    oldDeviceConnected = deviceConnected;
+  }
+}
