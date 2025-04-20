@@ -49,7 +49,12 @@ is_rdp_recording = False
 rdp_recording_thread = None
 rdp_audio_file_path = "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_record.wav"
 
-GDRIVE_FOLDER_ID = "1H9Mp6ctGRFP0_PXRZ8ugjIJWVJu-lcVY"  # 設定 Google Drive 上傳資料夾 ID
+GDRIVE_FOLDER_ID = "1H9Mp6ctGRFP0_PXRZ8ugjIJWVJu-lcVY"  # 設定 Google Drive 上傳資料夾 I
+
+global_rhythm_playing = False
+
+recording_date = None
+recording_count = 0
 
 # 在全局變數部分添加
 device_clients = {}
@@ -306,7 +311,7 @@ def auto_connect_serial_device(preferred_ports=None):
 
 def start_rdp_recording(selected_device_index=None):
     """開始錄製 RDP 專用音效"""
-    global is_rdp_recording, rdp_recording_thread
+    global is_rdp_recording, rdp_recording_thread, recording_date, recording_count
     
     if is_rdp_recording:
         log_message("RDP錄音已經在進行中")
@@ -317,9 +322,19 @@ def start_rdp_recording(selected_device_index=None):
         import numpy as np
         import scipy.io.wavfile as wavfile
         import time
+        import datetime
         
-        # 設置錄音標誌
-        is_rdp_recording = True
+        # 檢查日期是否為今天，如果不是，重置計數器
+        today = datetime.date.today().strftime("%Y%m%d")
+        if recording_date != today:
+            recording_date = today
+            recording_count = 0
+        
+        # 增加當天的錄音計數
+        recording_count += 1
+        
+        # 使用新的命名方式
+        rdp_audio_file_path = os.path.join(STORAGE_DIR, f"{recording_date}_{recording_count}_RDP.wav")
         
         def recording_function():
             global is_rdp_recording, rdp_audio_file_path
@@ -1719,6 +1734,59 @@ def process_data(device_name, data):
         elif command == "STOP_RDP_RECORDING":
             print("停止RDP錄音")
             stop_rdp_recording()
+        elif command.startswith("PLAY_ONCE_"):
+            # 單次播放特定音樂
+            music_idx = command.split("_")[2]
+            print(f"單次播放音樂 {music_idx}")
+            songlist_play_music(music_idx, loop=False)
+            
+        elif command.startswith("PLAY_RHYTHM|"):
+            # 處理節奏播放命令
+            # 格式：PLAY_RHYTHM|卡片編號|節奏點數量|時間1|時間2|...|時間n
+            rhythm_parts = command.split("|")
+            if len(rhythm_parts) >= 3:
+                card_idx = rhythm_parts[1]
+                rhythm_count = int(rhythm_parts[2])
+                rhythm_times = [int(rhythm_parts[i+3]) for i in range(rhythm_count) if i+3 < len(rhythm_parts)]
+                
+                print(f"開始節奏播放卡片 {card_idx}，共 {rhythm_count} 個節奏點")
+                
+                # 啟動一個新線程來處理節奏播放
+                def play_rhythm_thread():
+                    try:
+                        while True:  # 無限循環播放節奏
+                            start_time = time.time() * 1000  # 轉換為毫秒
+                            for t in rhythm_times:
+                                # 計算需要等待的時間
+                                wait_time = t - ((time.time() * 1000) - start_time)
+                                if wait_time > 0:
+                                    time.sleep(wait_time / 1000)  # 轉換回秒
+                                
+                                # 單次播放音樂
+                                songlist_play_music(card_idx, loop=False)
+                                
+                                # 檢查是否應該停止播放
+                                if not global_rhythm_playing:
+                                    break
+                            
+                            # 如果已經停止播放，則跳出循環
+                            if not global_rhythm_playing:
+                                break
+                    except Exception as e:
+                        print(f"節奏播放線程發生錯誤: {e}")
+                
+                # 設置全局變量表示正在播放節奏
+                global_rhythm_playing = True
+                
+                # 啟動節奏播放線程
+                rhythm_thread = threading.Thread(target=play_rhythm_thread)
+                rhythm_thread.daemon = True
+                rhythm_thread.start()
+        
+        elif command == "STOP_RHYTHM":
+            # 停止節奏播放
+            print("停止節奏播放")
+            global_rhythm_playing = False
     elif device_name == "ESP32_test_remote":
         # 處理測試遙控器資料
         command = data.decode('utf-8')
@@ -2049,7 +2117,7 @@ def start_recording(selected_device_index=None):
     Args:
         selected_device_index: 可選的設備索引，如果提供則使用指定設備
     """
-    global is_recording, recording_thread
+    global is_recording, recording_thread, recording_date, recording_count
     
     if is_recording:
         log_message("錄音已經在進行中")
@@ -2060,14 +2128,26 @@ def start_recording(selected_device_index=None):
         import numpy as np
         import scipy.io.wavfile as wavfile
         import time
+        import datetime
         
         # 設置錄音標誌
         is_recording = True
         
-        # 創建時間戳記
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        filename = f"recording_{timestamp}.wav"
+        # 檢查日期是否為今天，如果不是，重置計數器
+        today = datetime.date.today().strftime("%Y%m%d")
+        if recording_date != today:
+            recording_date = today
+            recording_count = 0
+        
+        # 增加當天的錄音計數
+        recording_count += 1
+        
+        # 創建符合要求的檔案名格式：[日期]_[編號]
+        filename = f"{recording_date}_{recording_count}.wav"
         file_path = os.path.join(STORAGE_DIR, filename)
+        
+        # 顯示開始錄音訊息
+        log_message(f"開始錄音，檔案將保存為：{filename}")
         
         def recording_function():
             global is_recording
@@ -2141,8 +2221,8 @@ def start_recording(selected_device_index=None):
                     try:
                         from pydub import AudioSegment
                         
-                        # 創建 MP3 文件路徑
-                        mp3_filename = f"{timestamp}.mp3"
+                        # 創建 MP3 文件路徑，保持相同的命名格式
+                        mp3_filename = f"{recording_date}_{recording_count}.mp3"
                         mp3_file_path = os.path.join(STORAGE_DIR, mp3_filename)
                         
                         # 使用 pydub 加載 WAV 並轉換為 MP3
@@ -2335,12 +2415,21 @@ def trim_silence_from_audio(file_path, output_path=None, threshold=0.01, min_sil
         return file_path
 
 def record_audio_stream(filename):
-    global is_recording, audio_buffer
+    global is_recording, audio_buffer, recording_date, recording_count
     
     try:
+        # 檢查日期是否為今天，如果不是，重置計數器
+        import datetime
+        today = datetime.date.today().strftime("%Y%m%d")
+        if recording_date != today:
+            recording_date = today
+            recording_count = 0
+        
+        # 增加當天的錄音計數
+        recording_count += 1
+        
         # 檔案路徑設定
-        timestamp = time.strftime("%Y%m%d-%H%M%S")
-        base_filename = f"recording_{timestamp}"
+        base_filename = f"{recording_date}_{recording_count}"
         full_filename = f"{base_filename}.wav"
         file_path = os.path.join(STORAGE_DIR, full_filename)
         

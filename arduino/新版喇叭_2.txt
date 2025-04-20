@@ -152,7 +152,7 @@ void loop() {
   int deviation1 = abs(baselineValue1 - totalValue1);  // 計算偏差的絕對值
   
   // 當偏差大於200且未處於彎曲狀態時，發送開始彎曲訊號
-  if ((deviation1 > 300) && !isBent && (currentTime - lastBendStartTime > 800)) {
+  if ((deviation1 > 225) && !isBent && (currentTime - lastBendStartTime > 800)) {
     isBent = true;
     hornPlayed = false;  // 重置播放標記
     lastBendStartTime = currentTime;  // 記錄彎曲開始的時間
@@ -170,7 +170,7 @@ void loop() {
     }
   }
   // 當偏差小於100且處於彎曲狀態時，發送停止彎曲訊號
-  else if ((deviation1 < 225) && isBent && (currentTime - lastBendStartTime > 600)) {
+  else if ((deviation1 < 150) && isBent && (currentTime - lastBendStartTime > 600)) {
     isBent = false;
     Serial.println("偵測到彎曲結束");
     Serial.print("偏差值: ");
