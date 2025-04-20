@@ -47,11 +47,14 @@ songlist_process = None
 
 is_rdp_recording = False
 rdp_recording_thread = None
-rdp_audio_file_path = "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_record.wav"
+rdp_audio_file_path = "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_record.wav"
 
 GDRIVE_FOLDER_ID = "1H9Mp6ctGRFP0_PXRZ8ugjIJWVJu-lcVY"  # 設定 Google Drive 上傳資料夾 I
 
-global_rhythm_playing = False
+is_recording_devices = False
+device_commands_recording = []  # 用於儲存裝置命令和時間點
+device_playback_thread = None
+is_playing_device_recording = False
 
 recording_date = None
 recording_count = 0
@@ -60,7 +63,7 @@ recording_count = 0
 device_clients = {}
 
 current_playing_music = None  # 目前正在播放的音樂編號
-STORAGE_DIR = r"C:\Users\maboo\yzu_2025\yzu_2025_1\recording"
+STORAGE_DIR = r"C:\Users\maboo\yzu_2025\yzu_2025_2\recording"
 if not os.path.exists(STORAGE_DIR):
     os.makedirs(STORAGE_DIR)
 
@@ -135,44 +138,44 @@ audio_stream = None  # 用於儲存音訊流的全局變數
 loaded_audio_data = {}
 
 horn_audio_file_before = {
-    "1": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/horn_before.wav",  # 第一組
-    "2": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/horn2_before.wav", # 第二組
-    "3": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/horn3_before.wav"  # 第三組
+    "1": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/horn_before.wav",  # 第一組
+    "2": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/horn2_before.wav", # 第二組
+    "3": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/horn3_before.wav"  # 第三組
 }
 
 horn_audio_file_after = {
-    "1": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/horn_after.wav",   # 第一組
-    "2": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/horn2_after.wav",  # 第二組
-    "3": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/horn3_after.wav"   # 第三組
+    "1": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/horn_after.wav",   # 第一組
+    "2": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/horn2_after.wav",  # 第二組
+    "3": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/horn3_after.wav"   # 第三組
 }
 
 wheel_audio_file = {
-    "1": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/wheel_sound_before.wav",
-    "2": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/wheel_sound_after.wav",
-    "OG": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/wheel_sound.wav"
+    "1": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/wheel_sound_before.wav",
+    "2": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/wheel_sound_after.wav",
+    "OG": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/wheel_sound.wav"
 }   
 music_files = {
-    "1": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/1.wav",
-    "2": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/2.wav",
-    "3": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/3.wav"
+    "1": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/1.wav",
+    "2": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/2.wav",
+    "3": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/3.wav"
 }
 rdp_audio_files = {
-    "1": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_J.wav",  # 音樂1對應的RDP音效
-    "2": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_JZ.wav",  # 音樂2對應的RDP音效
-    "3": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP.wav",  # 音樂3對應的RDP音效
-    "default": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP.wav",    # 默認的RDP音效
-    "RDP_2": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_2.wav",  # 按鈕2按下時播放
-    "RDP_1_before": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_1_before.wav", # 按鈕3按下時循環播放
-    "RDP_1_after": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_1_after.wav",   # 按鈕3放開時播放
-    "RDP_2_before": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_2_before.wav", # 按鈕3按下時循環播放
-    "RDP_2_after": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_2_after.wav",   # 按鈕3放開時播放
-    "RDP_3_before": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_3_before.wav", # 按鈕3按下時循環播放
-    "RDP_3_after": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_3_after.wav",   # 按鈕3放開時播放
-    "city_1_before": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/City_1_before.wav", # 按鈕3按下時循環播放
-    "city_1_after": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/City_1_after.wav",   # 按鈕3放開時播放
-    "city_2_before": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/City_2_before.wav", # 按鈕3按下時循環播放
-    "city_2_after": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/City_2_after.wav",   # 按鈕3放開時播放
-    "RDP_record": "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_record.wav"
+    "1": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_J.wav",  # 音樂1對應的RDP音效
+    "2": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_JZ.wav",  # 音樂2對應的RDP音效
+    "3": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP.wav",  # 音樂3對應的RDP音效
+    "default": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP.wav",    # 默認的RDP音效
+    "RDP_2": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_2.wav",  # 按鈕2按下時播放
+    "RDP_1_before": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_1_before.wav", # 按鈕3按下時循環播放
+    "RDP_1_after": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_1_after.wav",   # 按鈕3放開時播放
+    "RDP_2_before": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_2_before.wav", # 按鈕3按下時循環播放
+    "RDP_2_after": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_2_after.wav",   # 按鈕3放開時播放
+    "RDP_3_before": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_3_before.wav", # 按鈕3按下時循環播放
+    "RDP_3_after": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_3_after.wav",   # 按鈕3放開時播放
+    "city_1_before": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/City_1_before.wav", # 按鈕3按下時循環播放
+    "city_1_after": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/City_1_after.wav",   # 按鈕3放開時播放
+    "city_2_before": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/City_2_before.wav", # 按鈕3按下時循環播放
+    "city_2_after": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/City_2_after.wav",   # 按鈕3放開時播放
+    "RDP_record": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_record.wav"
 }
 
 device_channel_mapping = {
@@ -233,6 +236,118 @@ def auto_detect_serial_port():
     except Exception as e:
         log_message(f"自動偵測串口時發生錯誤: {e}")
         return None
+
+def start_device_recording():
+    """開始錄製 RDP、wheel、horn 這三個裝置的音效命令"""
+    global is_recording_devices, device_commands_recording, is_playing_device_recording
+    
+    # 如果正在播放，先停止播放
+    if is_playing_device_recording:
+        is_playing_device_recording = False
+        if device_playback_thread and device_playback_thread.is_alive():
+            device_playback_thread.join(timeout=1.0)
+    
+    # 清空之前的錄製
+    device_commands_recording = []
+    
+    # 開始新的錄製
+    is_recording_devices = True
+    log_message("開始錄製設備音效 (RDP, wheel, horn)")
+
+def record_device_command(device_name, command_data):
+    """記錄設備命令及其時間點"""
+    global is_recording_devices, device_commands_recording
+    
+    # 只有在錄製模式下且是針對特定設備才記錄
+    if is_recording_devices and device_name in ["ESP32_RDP_BLE", "ESP32_Wheelspeed2_BLE", "ESP32_HornBLE", "ESP32_HornBLE_2"]:
+        # 記錄命令、設備和時間點
+        timestamp = time.time() * 1000  # 毫秒級時間戳
+        
+        # 如果是第一個命令，記錄相對時間為0
+        if not device_commands_recording:
+            base_time = timestamp
+            relative_time = 0
+        else:
+            base_time = device_commands_recording[0]["absolute_time"]
+            relative_time = timestamp - base_time
+        
+        # 儲存命令記錄
+        command_record = {
+            "device": device_name,
+            "command": command_data,
+            "relative_time": relative_time,
+            "absolute_time": timestamp
+        }
+        
+        device_commands_recording.append(command_record)
+        log_message(f"已記錄設備 {device_name} 的命令，相對時間: {relative_time}ms")
+
+def stop_device_recording_and_play():
+    """停止錄製設備音效並開始循環播放"""
+    global is_recording_devices, device_commands_recording, is_playing_device_recording, device_playback_thread
+    
+    # 停止錄製
+    is_recording_devices = False
+    
+    # 檢查是否有錄製到命令
+    if not device_commands_recording:
+        log_message("沒有錄製到任何設備命令，無法播放")
+        return
+    
+    log_message(f"共錄製了 {len(device_commands_recording)} 個設備命令，開始循環播放")
+    
+    # 開始循環播放
+    is_playing_device_recording = True
+    
+    # 創建並啟動播放線程
+    device_playback_thread = threading.Thread(target=play_device_commands_thread)
+    device_playback_thread.daemon = True
+    device_playback_thread.start()
+
+def play_device_commands_thread():
+    """在背景線程中循環播放錄製的設備命令"""
+    global is_playing_device_recording, device_commands_recording
+    
+    try:
+        # 持續循環播放，直到被停止
+        while is_playing_device_recording:
+            # 記錄播放開始時間
+            playback_start_time = time.time() * 1000
+            
+            # 依次播放每個命令
+            for cmd_record in device_commands_recording:
+                # 檢查是否應該停止播放
+                if not is_playing_device_recording:
+                    break
+                
+                # 計算應該等待的時間
+                current_time = time.time() * 1000
+                elapsed_time = current_time - playback_start_time
+                wait_time = cmd_record["relative_time"] - elapsed_time
+                
+                # 如果需要等待，則等待
+                if wait_time > 0:
+                    time.sleep(wait_time / 1000)  # 轉換為秒
+                
+                # 重放命令
+                device_name = cmd_record["device"]
+                command_data = cmd_record["command"]
+                log_message(f"重放設備 {device_name} 的命令")
+                
+                # 使用相同的處理函數處理命令
+                process_data(device_name, command_data)
+            
+            # 一輪播放完成，短暫暫停
+            time.sleep(0.5)
+            
+    except Exception as e:
+        log_message(f"設備命令播放線程發生錯誤: {e}")
+        import traceback
+        log_message(traceback.format_exc())
+    
+    finally:
+        is_playing_device_recording = False
+        log_message("設備命令播放已停止")
 
 # 音樂播放函數
 def songlist_play_music(index, loop=True, speed=1.0):
@@ -726,7 +841,7 @@ def upload_to_google_drive(file_path, folder_id=None, fixed_filename=None):
             # 嘗試在替代位置尋找檔案
             filename = os.path.basename(file_path)
             alternative_locations = [
-                r"C:\Users\maboo\yzu_2025\yzu_2025_1",
+                r"C:\Users\maboo\yzu_2025\yzu_2025_2",
                 os.getcwd(),
                 STORAGE_DIR
             ]
@@ -1288,7 +1403,12 @@ def play_device_music(device_name, file_path, loop=True, speed=1.0):
 
 # 處理來自ESP32的資料
 def process_data(device_name, data):
-    global stop_recording, start_recording, hornPlayed, horn_mode_switched
+    global stop_recording, start_recording, hornPlayed, horn_mode_switched, is_recording_devices
+    
+    # 保存原始數據用於記錄
+    command_data = data
+    
+    # 處理數據解碼
     if isinstance(data, bytes):
         try:
             command_str = data.decode('utf-8')
@@ -1297,6 +1417,10 @@ def process_data(device_name, data):
             command_str = str(data)
     else:
         command_str = str(data)
+    
+    # 記錄處理
+    if is_recording_devices and device_name in ["ESP32_RDP_BLE", "ESP32_Wheelspeed2_BLE", "ESP32_HornBLE", "ESP32_HornBLE_2"]:
+        record_device_command(device_name, command_data)
     
     log_message(f"{device_name}: 收到命令 {command_str}")
     
@@ -1734,65 +1858,19 @@ def process_data(device_name, data):
         elif command == "STOP_RDP_RECORDING":
             print("停止RDP錄音")
             stop_rdp_recording()
-        elif command.startswith("PLAY_ONCE_"):
-            # 單次播放特定音樂
-            music_idx = command.split("_")[2]
-            print(f"單次播放音樂 {music_idx}")
-            songlist_play_music(music_idx, loop=False)
-            
-        elif command.startswith("PLAY_RHYTHM|"):
-            # 處理節奏播放命令
-            # 格式：PLAY_RHYTHM|卡片編號|節奏點數量|時間1|時間2|...|時間n
-            rhythm_parts = command.split("|")
-            if len(rhythm_parts) >= 3:
-                card_idx = rhythm_parts[1]
-                rhythm_count = int(rhythm_parts[2])
-                rhythm_times = [int(rhythm_parts[i+3]) for i in range(rhythm_count) if i+3 < len(rhythm_parts)]
-                
-                print(f"開始節奏播放卡片 {card_idx}，共 {rhythm_count} 個節奏點")
-                
-                # 啟動一個新線程來處理節奏播放
-                def play_rhythm_thread():
-                    try:
-                        while True:  # 無限循環播放節奏
-                            start_time = time.time() * 1000  # 轉換為毫秒
-                            for t in rhythm_times:
-                                # 計算需要等待的時間
-                                wait_time = t - ((time.time() * 1000) - start_time)
-                                if wait_time > 0:
-                                    time.sleep(wait_time / 1000)  # 轉換回秒
-                                
-                                # 單次播放音樂
-                                songlist_play_music(card_idx, loop=False)
-                                
-                                # 檢查是否應該停止播放
-                                if not global_rhythm_playing:
-                                    break
-                            
-                            # 如果已經停止播放，則跳出循環
-                            if not global_rhythm_playing:
-                                break
-                    except Exception as e:
-                        print(f"節奏播放線程發生錯誤: {e}")
-                
-                # 設置全局變量表示正在播放節奏
-                global_rhythm_playing = True
-                
-                # 啟動節奏播放線程
-                rhythm_thread = threading.Thread(target=play_rhythm_thread)
-                rhythm_thread.daemon = True
-                rhythm_thread.start()
+        elif command == "START_DEVICE_RECORDING":
+            print("開始錄製設備音效")
+            start_device_recording()
         
-        elif command == "STOP_RHYTHM":
-            # 停止節奏播放
-            print("停止節奏播放")
-            global_rhythm_playing = False
+        elif command == "STOP_DEVICE_RECORDING_AND_PLAY":
+            print("停止錄製並循環播放設備音效")
+            stop_device_recording_and_play()
     elif device_name == "ESP32_test_remote":
         # 處理測試遙控器資料
         command = data.decode('utf-8')
         print(f"測試遙控器: 收到命令 {command}")
-        test_audio_file2 = "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/3.wav"
-        test_audio_file = "C:/Users/maboo/yzu_2025/yzu_2025_1/audio/RDP_2_before.wav"
+        test_audio_file2 = "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/3.wav"
+        test_audio_file = "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_2_before.wav"
         
         if command == "BUTTON_13_PRESSED":
             # 記錄按鈕13的狀態，用於切換錄音
