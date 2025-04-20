@@ -14,6 +14,7 @@
 #define SS_PIN      21    // SDA(SS) 連接到 GPIO 21
 #define RECORD_BUTTON_PIN  4    // 錄音按鈕連接到 GPIO 4 (可以更換為其他可用的引腳)
 #define RDP_RECORD_BUTTON_PIN  5    // RDP錄音按鈕連接到 GPIO 5 (或其他可用的引腳)
+#define RHYTHM_BUTTON_PIN  15
 
 // 建立 RFID 物件
 MFRC522 rfid(SS_PIN, RST_PIN);
@@ -36,6 +37,15 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 bool recordButtonState = false;  // 錄音按鈕的狀態
 
+bool rhythmButtonState = false;  // 節奏按鈕的狀態
+bool isRecordingRhythm = false;  // 是否正在記錄節奏
+bool isPlayingRhythm = false;    // 是否正在播放記錄的節奏
+unsigned long rhythmStartTime = 0;  // 記錄開始時間
+unsigned long lastRhythmPressTime = 0;  // 上一次按下節奏按鈕的時間
+const int MAX_RHYTHM_EVENTS = 50;  // 最大可記錄的節奏事件數
+unsigned long rhythmEvents[MAX_RHYTHM_EVENTS];  // 記錄節奏事件的時間點
+int rhythmEventCount = 0;  // 記錄的節奏事件數量
+
 bool rdpRecordButtonState = false;
 // 連接狀態回調
 class MyServerCallbacks: public BLEServerCallbacks {
@@ -57,6 +67,7 @@ void setup() {
   
   pinMode(RECORD_BUTTON_PIN, INPUT_PULLUP);  // 設置錄音按鈕為輸入，啟用內部上拉電阻
   pinMode(RDP_RECORD_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(RHYTHM_BUTTON_PIN, INPUT_PULLUP);
   Serial.println("RFID 音樂控制器已啟動 (BLE 模式)");
   
   // 初始化 BLE
@@ -255,6 +266,138 @@ void loop() {
     }
   }
   
+  // 在處理錄音按鈕和 RDP 錄音按鈕之後，添加這段代碼
+bool rhythmButtonPressed = !digitalRead(RHYTHM_BUTTON_PIN);
+if (rhythmButtonPressed && !rhythmButtonState) {
+  // 按鈕剛被按下
+  Serial.println("節奏按鈕被按下");
+  
+  // 如果已經在記錄節奏，則添加新的節奏點
+  if (isRecordingRhythm) {
+    unsigned long currentTime = millis();
+    unsigned long elapsedTime = currentTime - rhythmStartTime;
+    
+    // 記錄節奏點
+    if (rhythmEventCount < MAX_RHYTHM_EVENTS) {
+      rhythmEvents[rhythmEventCount++] = elapsedTime;
+      Serial.print("記錄節奏點：");
+      Serial.println(elapsedTime);
+      
+      // 發送命令播放當前卡片的音樂一次
+      if (deviceConnected && currentCard > 0) {
+        String playCommand = "PLAY_ONCE_" + String(currentCard);
+        pCharacteristic->setValue((uint8_t*)playCommand.c_str(), playCommand.length());
+        pCharacteristic->notify();
+        Serial.print("發送命令：");
+        Serial.println(playCommand);
+      }
+    }
+  } 
+  // 如果正在播放節奏，則停止播放
+  else if (isPlayingRhythm) {
+    isPlayingRhythm = false;
+    Serial.println("停止播放節奏");
+    
+    // 發送停止命令
+    if (deviceConnected) {
+      const char* commandStr = "STOP_RHYTHM";
+      pCharacteristic->setValue((uint8_t*)commandStr, strlen(commandStr));
+      pCharacteristic->notify();
+      Serial.println("發送停止節奏命令");
+    }
+  } 
+  // 如果什麼都沒在做，則開始記錄節奏
+  else {
+    isRecordingRhythm = true;
+    rhythmStartTime = millis();
+    rhythmEventCount = 0;
+    Serial.println("開始記錄節奏");
+    
+    // 發送開始記錄節奏命令
+    if (deviceConnected) {
+      const char* commandStr = "START_RECORD_RHYTHM";
+      pCharacteristic->setValue((uint8_t*)commandStr, strlen(commandStr));
+      pCharacteristic->notify();
+      Serial.println("發送開始記錄節奏命令");
+    }
+  }
+  
+  rhythmButtonState = true;
+  delay(50);  // 簡單的消抖
+} else if (!rhythmButtonPressed && rhythmButtonState) {
+  // 按鈕被釋放
+  Serial.println("節奏按鈕被釋放");
+  
+  // 如果正在記錄節奏，則完成記錄並開始播放
+  if (isRecordingRhythm) {
+    isRecordingRhythm = false;
+    
+    // 只有在有記錄到節奏點時才開始播放
+    if (rhythmEventCount > 0) {
+      isPlayingRhythm = true;
+      Serial.print("完成節奏記錄，共 ");
+      Serial.print(rhythmEventCount);
+      Serial.println(" 個節奏點");
+      
+      // 發送開始播放節奏命令
+      if (deviceConnected) {
+        // 構建一個包含節奏數據的命令
+        String rhythmData = "PLAY_RHYTHM|" + String(currentCard) + "|" + String(rhythmEventCount);
+        for (int i = 0; i < rhythmEventCount; i++) {
+          rhythmData += "|" + String(rhythmEvents[i]);
+        }
+        
+        pCharacteristic->setValue((uint8_t*)rhythmData.c_str(), rhythmData.length());
+        pCharacteristic->notify();
+        Serial.print("發送開始播放節奏命令：");
+        Serial.println(rhythmData);
+      }
+    } else {
+      Serial.println("沒有記錄到節奏點，取消播放");
+    }
+  }
+  
+  rhythmButtonState = false;
+  delay(50);  // 簡單的消抖
+}
+
+// 處理節奏播放
+if (isPlayingRhythm && deviceConnected && currentCard > 0) {
+  static unsigned long rhythmPlaybackStartTime = 0;
+  static int currentRhythmEvent = 0;
+  
+  // 如果是第一次進入播放狀態，初始化播放時間
+  if (currentRhythmEvent == 0) {
+    rhythmPlaybackStartTime = millis();
+    currentRhythmEvent = 0;
+  }
+  
+  // 計算播放時間
+  unsigned long currentTime = millis();
+  unsigned long playbackTime = currentTime - rhythmPlaybackStartTime;
+  
+  // 檢查是否應該觸發下一個節奏點
+  if (currentRhythmEvent < rhythmEventCount && 
+      playbackTime >= rhythmEvents[currentRhythmEvent]) {
+    
+    // 發送播放命令
+    String playCommand = "PLAY_ONCE_" + String(currentCard);
+    pCharacteristic->setValue((uint8_t*)playCommand.c_str(), playCommand.length());
+    pCharacteristic->notify();
+    Serial.print("節奏播放：");
+    Serial.println(playCommand);
+    
+    // 移動到下一個節奏點
+    currentRhythmEvent++;
+    
+    // 如果所有節奏點都播放完，則重新開始
+    if (currentRhythmEvent >= rhythmEventCount) {
+      currentRhythmEvent = 0;
+      rhythmPlaybackStartTime = currentTime;
+    }
+  }
+}
+
   // 處理重新連接
   if (!deviceConnected && oldDeviceConnected) {
     delay(500); // 等待 BLE 堆疊準備好
