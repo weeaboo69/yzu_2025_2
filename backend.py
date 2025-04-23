@@ -32,6 +32,8 @@ serial_connected = False
 
 audio_mixer = None
 
+recording_music_state = None
+
 # 歌單控制器狀態變數
 songlist_connected = False
 songlist_current_playing_music = None
@@ -248,7 +250,7 @@ def auto_detect_serial_port():
 
 def start_device_recording():
     """開始錄製 RDP、wheel、horn 這三個裝置的音效命令"""
-    global is_recording_devices, device_commands_recording, is_playing_device_recording
+    global is_recording_devices, device_commands_recording, is_playing_device_recording, recording_music_state
     
     # 如果正在播放，先停止播放
     if is_playing_device_recording:
@@ -258,6 +260,10 @@ def start_device_recording():
     
     # 清空之前的錄製
     device_commands_recording = []
+    
+    # 記錄當前的音樂狀態
+    recording_music_state = songlist_current_playing_music
+    log_message(f"記錄當前音樂狀態: {recording_music_state}")
     
     # 開始新的錄製
     is_recording_devices = True
@@ -390,8 +396,8 @@ def replay_device_command(device_name, command_data):
             
             # 處理 RDP 播放按鈕命令
             if "BUTTON_PRESSED" in command_str or "BUTTON2_PRESSED" in command_str or "BUTTON3_PRESSED" in command_str:
-                # 根據當前歌曲選擇開始音效
-                current_song = songlist_current_playing_music
+                # 使用錄製時的音樂狀態而不是當前狀態
+                current_song = recording_music_state  # 使用錄製時的狀態
                 sound_file = rdp_audio_files.get("RDP_3_before")  # 預設
                 
                 if current_song == "1":
@@ -401,15 +407,15 @@ def replay_device_command(device_name, command_data):
                 elif current_song == "3":
                     sound_file = rdp_audio_files.get("city_2_before", sound_file)
                 
-                # 使用 play_device_music 播放音效，並指定來源為 "Loop_" + 原始設備名稱
-                # 這樣能標記循環播放的音效
+                log_message(f"循環播放: 使用錄製時的音樂狀態 [{current_song}] 重放 RDP 按下音效 {sound_file}")
+                
+                # 使用 play_device_music 播放音效
                 loop_device_name = "Loop_" + device_name
                 play_device_music(loop_device_name, sound_file, loop=True)
-                log_message(f"循環播放: 重放 RDP 按下音效 {sound_file}")
                 
             elif "BUTTON_RELEASED" in command_str or "BUTTON2_RELEASED" in command_str or "BUTTON3_RELEASED" in command_str:
-                # 根據當前歌曲選擇結束音效
-                current_song = songlist_current_playing_music
+                # 使用錄製時的音樂狀態而不是當前狀態
+                current_song = recording_music_state  # 使用錄製時的狀態
                 sound_file = rdp_audio_files.get("RDP_3_after")  # 預設
                 
                 if current_song == "1":
@@ -419,10 +425,11 @@ def replay_device_command(device_name, command_data):
                 elif current_song == "3":
                     sound_file = rdp_audio_files.get("city_2_after", sound_file)
                 
+                log_message(f"循環播放: 使用錄製時的音樂狀態 [{current_song}] 重放 RDP 釋放音效 {sound_file}")
+                
                 # 使用 play_device_music 播放音效
                 loop_device_name = "Loop_" + device_name
                 play_device_music(loop_device_name, sound_file, loop=False)
-                log_message(f"循環播放: 重放 RDP 釋放音效 {sound_file}")
             else:
                 log_message(f"未知的 RDP 命令: {command_str}, 無法重放")
         except Exception as e:
