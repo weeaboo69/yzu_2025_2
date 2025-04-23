@@ -178,6 +178,7 @@ rdp_audio_files = {
     "RDP_record": "C:/Users/maboo/yzu_2025/yzu_2025_2/audio/RDP_record.wav"
 }
 
+# 原始裝置的頻道映射
 device_channel_mapping = {
     "ESP32_HornBLE": 0,
     "ESP32_HornBLE_2": 1,
@@ -188,11 +189,19 @@ device_channel_mapping = {
     "Serial_Device": 6
 }
 
+# 循環播放時使用的頻道映射 (使用更高的頻道號碼避免衝突)
+device_loop_channel_mapping = {
+    "ESP32_HornBLE": 10,
+    "ESP32_HornBLE_2": 11,
+    "ESP32_Wheelspeed2_BLE": 12,
+    "ESP32_RDP_BLE": 13
+}
+
 # 設定ESP32裝置的UUID
 ESP32_DEVICES = [
-    "ESP32_HornBLE",           # 喇叭控制器
-    "ESP32_HornBLE_2",
-    "ESP32_Wheelspeed2_BLE",   # 輪子速度控制器
+    #"ESP32_HornBLE",           # 喇叭控制器
+    #"ESP32_HornBLE_2",
+    #"ESP32_Wheelspeed2_BLE",   # 輪子速度控制器
     "ESP32_RDP_BLE",           # 輪子觸發控制器
     "ESP32_MusicSensor_BLE",    # 歌單控制器
     #"ESP32_test_remote",
@@ -338,13 +347,13 @@ def play_device_commands_thread():
                 if wait_time > 0:
                     time.sleep(wait_time / 1000)  # 轉換為秒
                 
-                # 重放命令
+                # 重放命令但使用專用頻道
                 device_name = cmd_record["device"]
                 command_data = cmd_record["command"]
-                log_message(f"重放設備 {device_name} 的命令")
+                log_message(f"重放設備 {device_name} 的命令 (循環播放頻道)")
                 
-                # 使用相同的處理函數處理命令
-                process_data(device_name, command_data)
+                # 我們需要特殊處理而不是直接調用 process_data
+                replay_device_command(device_name, command_data)
             
             log_message("本輪循環播放完成")
             
@@ -356,6 +365,124 @@ def play_device_commands_thread():
     finally:
         is_playing_device_recording = False
         log_message("設備命令播放已停止")
+
+def replay_device_command(device_name, command_data):
+    """使用專用頻道重放設備命令"""
+    global device_loop_channel_mapping, audio_mixer
+    
+    # 先記錄原始命令資料以便調試
+    log_message(f"嘗試重放命令: 設備={device_name}, 命令資料類型={type(command_data)}, 值={command_data}")
+    
+    # 根據設備類型處理命令
+    if device_name == "ESP32_RDP_BLE":
+        try:
+            # 檢查命令資料類型並適當處理 - 包括 bytes 和 bytearray
+            if isinstance(command_data, (bytes, bytearray)):
+                try:
+                    command_str = command_data.decode('utf-8')
+                    log_message(f"解碼後的 RDP 命令: {command_str}")
+                except UnicodeDecodeError:
+                    command_str = str(command_data)
+                    log_message(f"無法解碼的 RDP 命令，轉換為字串: {command_str}")
+            else:
+                command_str = str(command_data)
+                log_message(f"非位元組類型的 RDP 命令: {command_str}")
+            
+            # 處理 RDP 播放按鈕命令
+            if "BUTTON_PRESSED" in command_str or "BUTTON2_PRESSED" in command_str or "BUTTON3_PRESSED" in command_str:
+                # 根據當前歌曲選擇開始音效
+                current_song = songlist_current_playing_music
+                sound_file = rdp_audio_files.get("RDP_3_before")  # 預設
+                
+                if current_song == "1":
+                    sound_file = rdp_audio_files.get("RDP_1_before", sound_file)
+                elif current_song == "2":
+                    sound_file = rdp_audio_files.get("RDP_2_before", sound_file)
+                elif current_song == "3":
+                    sound_file = rdp_audio_files.get("city_2_before", sound_file)
+                
+                # 使用 play_device_music 播放音效，並指定來源為 "Loop_" + 原始設備名稱
+                # 這樣能標記循環播放的音效
+                loop_device_name = "Loop_" + device_name
+                play_device_music(loop_device_name, sound_file, loop=True)
+                log_message(f"循環播放: 重放 RDP 按下音效 {sound_file}")
+                
+            elif "BUTTON_RELEASED" in command_str or "BUTTON2_RELEASED" in command_str or "BUTTON3_RELEASED" in command_str:
+                # 根據當前歌曲選擇結束音效
+                current_song = songlist_current_playing_music
+                sound_file = rdp_audio_files.get("RDP_3_after")  # 預設
+                
+                if current_song == "1":
+                    sound_file = rdp_audio_files.get("RDP_1_after", sound_file)
+                elif current_song == "2":
+                    sound_file = rdp_audio_files.get("RDP_2_after", sound_file)
+                elif current_song == "3":
+                    sound_file = rdp_audio_files.get("city_2_after", sound_file)
+                
+                # 使用 play_device_music 播放音效
+                loop_device_name = "Loop_" + device_name
+                play_device_music(loop_device_name, sound_file, loop=False)
+                log_message(f"循環播放: 重放 RDP 釋放音效 {sound_file}")
+            else:
+                log_message(f"未知的 RDP 命令: {command_str}, 無法重放")
+        except Exception as e:
+            log_message(f"循環播放 RDP 音效失敗: {e}")
+            import traceback
+            log_message(traceback.format_exc())
+    
+    elif device_name == "ESP32_Wheelspeed2_BLE":
+        try:
+            # 同樣處理 bytearray 類型
+            if isinstance(command_data, (bytes, bytearray)):
+                try:
+                    speed_str = command_data.decode('utf-8')
+                    
+                    if speed_str == "gjp4":  # 順時針
+                        sound_file = wheel_audio_file["1"]
+                        loop_device_name = "Loop_" + device_name
+                        play_device_music(loop_device_name, sound_file, loop=False)
+                        log_message(f"循環播放: 重放輪子順時針音效 {sound_file}")
+                        
+                    elif speed_str == "su4":  # 逆時針
+                        sound_file = wheel_audio_file["2"]
+                        loop_device_name = "Loop_" + device_name
+                        play_device_music(loop_device_name, sound_file, loop=False)
+                        log_message(f"循環播放: 重放輪子逆時針音效 {sound_file}")
+                except Exception as e:
+                    log_message(f"處理輪子命令失敗: {e}")
+            else:
+                log_message(f"不支援的輪子命令類型: {type(command_data)}")
+        except Exception as e:
+            log_message(f"循環播放輪子音效失敗: {e}")
+            import traceback
+            log_message(traceback.format_exc())
+    
+    elif device_name == "ESP32_HornBLE" or device_name == "ESP32_HornBLE_2":
+        try:
+            # 處理 bytearray 和 bytes 類型
+            if isinstance(command_data, (bytes, bytearray)) and len(command_data) > 0:
+                if command_data[0] == 254:  # 開始彎曲
+                    # 獲取對應的喇叭組
+                    horn_set = current_horn_set.get(device_name, "1")
+                    horn_file = horn_audio_file_before[horn_set]
+                    
+                    loop_device_name = "Loop_" + device_name
+                    play_device_music(loop_device_name, horn_file, loop=False)
+                    log_message(f"循環播放: 重放 {device_name} 的開始音效 {horn_file}")
+                    
+                elif command_data[0] == 253:  # 停止彎曲
+                    horn_set = current_horn_set.get(device_name, "1")
+                    horn_file = horn_audio_file_after[horn_set]
+                    
+                    loop_device_name = "Loop_" + device_name
+                    play_device_music(loop_device_name, horn_file, loop=False)
+                    log_message(f"循環播放: 重放 {device_name} 的結束音效 {horn_file}")
+            else:
+                log_message(f"不支援的喇叭命令類型或格式: {type(command_data)}, 值: {command_data}")
+        except Exception as e:
+            log_message(f"循環播放喇叭音效失敗: {e}")
+            import traceback
+            log_message(traceback.format_exc())
 
 # 音樂播放函數
 def songlist_play_music(index, loop=True, speed=1.0):
