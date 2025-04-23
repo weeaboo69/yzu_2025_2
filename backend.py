@@ -311,6 +311,15 @@ def play_device_commands_thread():
     try:
         # 持續循環播放，直到被停止
         while is_playing_device_recording:
+            # 在每次循環開始前等待一段時間
+            cycle_delay = 1.5  # 設定每次循環前的等待時間（秒）
+            log_message(f"循環播放間隔: 等待 {cycle_delay} 秒後開始下一輪...")
+            time.sleep(cycle_delay)
+            
+            # 檢查是否應該停止播放（在等待期間可能已被停止）
+            if not is_playing_device_recording:
+                break
+            
             # 記錄播放開始時間
             playback_start_time = time.time() * 1000
             
@@ -337,8 +346,7 @@ def play_device_commands_thread():
                 # 使用相同的處理函數處理命令
                 process_data(device_name, command_data)
             
-            # 一輪播放完成，短暫暫停
-            time.sleep(0.5)
+            log_message("本輪循環播放完成")
             
     except Exception as e:
         log_message(f"設備命令播放線程發生錯誤: {e}")
