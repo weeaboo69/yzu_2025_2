@@ -201,9 +201,9 @@ device_loop_channel_mapping = {
 
 # 設定ESP32裝置的UUID
 ESP32_DEVICES = [
-    #"ESP32_HornBLE",           # 喇叭控制器
-    #"ESP32_HornBLE_2",
-    #"ESP32_Wheelspeed2_BLE",   # 輪子速度控制器
+    "ESP32_HornBLE",           # 喇叭控制器
+    "ESP32_HornBLE_2",
+    "ESP32_Wheelspeed2_BLE",   # 輪子速度控制器
     "ESP32_RDP_BLE",           # 輪子觸發控制器
     "ESP32_MusicSensor_BLE",    # 歌單控制器
     #"ESP32_test_remote",
@@ -327,7 +327,7 @@ def play_device_commands_thread():
         # 持續循環播放，直到被停止
         while is_playing_device_recording:
             # 在每次循環開始前等待一段時間
-            cycle_delay = 1.5  # 設定每次循環前的等待時間（秒）
+            cycle_delay = 2.0  # 設定每次循環前的等待時間（秒）
             log_message(f"循環播放間隔: 等待 {cycle_delay} 秒後開始下一輪...")
             time.sleep(cycle_delay)
             
@@ -444,17 +444,18 @@ def replay_device_command(device_name, command_data):
                 try:
                     speed_str = command_data.decode('utf-8')
                     
+                    # 使用與 RDP 相同的播放方式
+                    loop_device_name = "Loop_" + device_name
+                    
                     if speed_str == "gjp4":  # 順時針
                         sound_file = wheel_audio_file["1"]
-                        loop_device_name = "Loop_" + device_name
-                        play_device_music(loop_device_name, sound_file, loop=False)
                         log_message(f"循環播放: 重放輪子順時針音效 {sound_file}")
+                        play_device_music(loop_device_name, sound_file, loop=False)
                         
                     elif speed_str == "su4":  # 逆時針
                         sound_file = wheel_audio_file["2"]
-                        loop_device_name = "Loop_" + device_name
-                        play_device_music(loop_device_name, sound_file, loop=False)
                         log_message(f"循環播放: 重放輪子逆時針音效 {sound_file}")
+                        play_device_music(loop_device_name, sound_file, loop=False)
                 except Exception as e:
                     log_message(f"處理輪子命令失敗: {e}")
             else:
@@ -468,22 +469,23 @@ def replay_device_command(device_name, command_data):
         try:
             # 處理 bytearray 和 bytes 類型
             if isinstance(command_data, (bytes, bytearray)) and len(command_data) > 0:
+                # 使用與 RDP 相同的播放方式
+                loop_device_name = "Loop_" + device_name
+                
                 if command_data[0] == 254:  # 開始彎曲
                     # 獲取對應的喇叭組
                     horn_set = current_horn_set.get(device_name, "1")
                     horn_file = horn_audio_file_before[horn_set]
                     
-                    loop_device_name = "Loop_" + device_name
-                    play_device_music(loop_device_name, horn_file, loop=False)
                     log_message(f"循環播放: 重放 {device_name} 的開始音效 {horn_file}")
+                    play_device_music(loop_device_name, horn_file, loop=False)
                     
                 elif command_data[0] == 253:  # 停止彎曲
                     horn_set = current_horn_set.get(device_name, "1")
                     horn_file = horn_audio_file_after[horn_set]
                     
-                    loop_device_name = "Loop_" + device_name
-                    play_device_music(loop_device_name, horn_file, loop=False)
                     log_message(f"循環播放: 重放 {device_name} 的結束音效 {horn_file}")
+                    play_device_music(loop_device_name, horn_file, loop=False)
             else:
                 log_message(f"不支援的喇叭命令類型或格式: {type(command_data)}, 值: {command_data}")
         except Exception as e:
@@ -964,7 +966,7 @@ def authenticate_google_drive():
     
     return creds
 
-def upload_to_google_drive(file_path, folder_id=None, fixed_filename=None):
+def upload_to_google_drive(file_path, folder_id="1H9Mp6ctGRFP0_PXRZ8ugjIJWVJu-lcVY", fixed_filename=None):
     """上傳文件到 Google Drive 中指定的資料夾並設置為公開可訪問
     
     Args:
